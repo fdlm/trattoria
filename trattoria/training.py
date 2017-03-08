@@ -85,15 +85,15 @@ def train(net, train_batches, num_epochs, observables,
 
     try:
         for epoch in tqdm(range(num_epochs), leave=False):
-            epoch_results = iterate(train_batches, train_fn, observables)
+            observed = iterate(train_batches, train_fn, observables)
             if validator:
-                epoch_results.update(validator())
+                observed.update(validator())
 
             for log in logs:
-                log.add(epoch, epoch_results)
+                log.add(epoch, observed)
 
             for callback in callbacks:
-                callback(epoch, epoch_results)
+                callback(epoch, observed)
 
     except StopTraining:
         pass

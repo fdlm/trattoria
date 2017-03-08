@@ -17,6 +17,9 @@ class NeuralNetwork(object):
                 for l in lnn.layers.get_all_layers(self.net)
                 if isinstance(l, lnn.layers.InputLayer)]
 
+    def get_params(self, **tags):
+        return lnn.layers.get_all_params(self.net, **tags)
+
     def compile_process_function(self):
         self._process = theano.function(
             inputs=self.get_inputs(),

@@ -3,13 +3,18 @@ from tqdm import tqdm
 
 class ConsoleLog(object):
 
-    def __init__(self, train_objectives, val_objectives=None, out=tqdm):
+    def __init__(self, out=tqdm):
         self.out = out
+        self.log_val_names = None
+        self.header_fmt = None
+        self.row_fmt = None
+
+    def start(self, train_objectives, val_objectives=None):
         if val_objectives is None:
             val_objectives = []
 
         self.log_val_names = ['epoch', 'loss']
-        train_row_fmts = ['{loss:>15.6f}']
+        row_fmts = ['{loss:>15.6f}']
         header_fmts = ['{:>5s}', '{:>15s}']
 
         for name in train_objectives:
@@ -18,12 +23,11 @@ class ConsoleLog(object):
             self.log_val_names.append(name)
             name_len = max(15, len(name))
             header_fmts.append('{:>%ds}' % name_len)
-            train_row_fmts.append('{%s:>%d.6f}' % (name, name_len))
+            row_fmts.append('{%s:>%d.6f}' % (name, name_len))
 
-        val_row_fmts = []
         if 'val.loss' in val_objectives:
             self.log_val_names.append('val.loss')
-            val_row_fmts.append('{val.loss:>15.6f}')
+            row_fmts.append('{val.loss:>15.6f}')
             header_fmts.append('{:>15s}')
 
         for name in val_objectives:
@@ -32,19 +36,14 @@ class ConsoleLog(object):
             self.log_val_names.append(name)
             cap_len = max(15, len(name))
             header_fmts.append('{:>%ds}' % cap_len)
-            val_row_fmts.append('{%s:>%d.6f}' % (name, cap_len))
+            row_fmts.append('{%s:>%d.6f}' % (name, cap_len))
 
         self.header_fmt = ''.join(header_fmts)
-        self.train_row_fmt = ''.join(train_row_fmts)
-        self.val_row_fmt = ''.join(val_row_fmts)
-
-    def write_header(self):
+        self.row_fmt = ''.join(row_fmts)
         self.out.write(self.header_fmt.format(*self.log_val_names))
 
-    def write_row(self, epoch, train_objectives, val_objectives=None):
-        train_row = self.train_row_fmt.format(**train_objectives)
-        if val_objectives:
-            val_row = self.val_row_fmt.format(**val_objectives)
-        else:
-            val_row = ''
-        self.out.write('{:>5d}'.format(epoch) + train_row + val_row)
+    def add(self, epoch, epoch_results):
+        if self.row_fmt is None:
+            raise ValueError('Use start() before add()!')
+        row = self.row_fmt.format(**epoch_results)
+        self.out.write('{:>5d}'.format(epoch) + row)

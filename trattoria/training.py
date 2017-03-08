@@ -13,8 +13,8 @@ class StopTraining(Exception):
     pass
 
 
-def iterate(batch_iterator, func, objectives):
-    vals = OrderedDict((name, 0.0) for name in objectives)
+def iterate(batch_iterator, func, observables):
+    vals = OrderedDict((name, 0.0) for name in observables)
     n_iter = 0
 
     batches = tqdm(batch_iterator, leave=False)
@@ -36,9 +36,9 @@ def iterate(batch_iterator, func, objectives):
 
 class Validator(object):
 
-    def __init__(self, net, batches, objectives):
-        self.objectives = OrderedDict(('val.' + name, obj)
-                                      for name, obj in objectives.items())
+    def __init__(self, net, batches, observables):
+        self.observables = OrderedDict(('val.' + name, obj)
+                                       for name, obj in observables.items())
         self.batches = batches
 
         y_hat_test = net.get_outputs(deterministic=True)
@@ -46,51 +46,55 @@ class Validator(object):
         self.test_fn = theano.function(
             inputs=net.get_inputs(),
             outputs={name: obj(y_hat_test, y)
-                     for name, obj in objectives.items()}
+                     for name, obj in observables.items()}
         )
 
     def __call__(self):
-        return iterate(self.batches, self.test_fn, self.objectives)
+        return iterate(self.batches, self.test_fn, self.observables)
 
 
-def train(net, train_batches, num_epochs, objectives,
-          updater, validator=None, callbacks=None):
+def train(net, train_batches, num_epochs, observables,
+          updater, validator=None, logs=None, callbacks=None, **tags):
+
+    if not isinstance(observables, dict):
+        observables = {'loss': observables}
+
+    if 'loss' not in observables:
+        raise ValueError('Need definition of loss in objectives for training!')
 
     if callbacks is None:
         callbacks = []
 
-    if not isinstance(objectives, dict):
-        objectives = {'loss': objectives}
-
-    if 'loss' not in objectives:
-        raise ValueError('Need definition of loss in objectives for training!')
+    if logs is None:
+        logs = [ConsoleLog()]
 
     y = train_batches.target_tensor_type('y')
     y_hat = net.get_outputs()
-    loss = objectives['loss'](y_hat, y)
-    params = lnn.layers.get_all_params(net)
+    loss = observables['loss'](y_hat, y)
+    params = net.get_params(**tags)
     updates = updater(params, loss)
 
     train_fn = theano.function(
         inputs=net.get_inputs(),
-        outputs={name: obj(y_hat, y) for name, obj in objectives.items()},
+        outputs={name: calc(y_hat, y) for name, calc in observables.items()},
         updates=updates
     )
 
-    console_log = ConsoleLog(
-        objectives, validator.objectives if validator else None
-    )
-    console_log.write_header()
+    for log in logs:
+        log.start(observables, validator.observables if validator else None)
 
     try:
         for epoch in tqdm(range(num_epochs), leave=False):
-            epoch_results = iterate(train_batches, train_fn, objectives)
+            epoch_results = iterate(train_batches, train_fn, observables)
             if validator:
                 epoch_results.update(validator())
-            console_log.write_row(epoch, epoch_results)
+
+            for log in logs:
+                log.add(epoch, epoch_results)
 
             for callback in callbacks:
                 callback(epoch, epoch_results)
+
     except StopTraining:
         pass
 

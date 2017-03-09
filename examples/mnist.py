@@ -96,15 +96,17 @@ def main():
     )
     val = trattoria.training.Validator(
         net=net, batches=val_batches,
-        observables={'loss': lambda p, t: lasagne.objectives.categorical_crossentropy(p, t).mean(),
-                     'acc': lambda p, t: lasagne.objectives.categorical_accuracy(p, t).mean()}
+        observables={
+            'loss': trattoria.objectives.average_categorical_crossentropy,
+            'acc': trattoria.objectives.average_categorical_accuracy
+        }
     )
 
     trattoria.training.train(
         net=net,
         train_batches=train_batches,
         num_epochs=500,
-        observables=lambda p, t: lasagne.objectives.categorical_crossentropy(p, t).mean(),
+        observables=trattoria.objectives.average_categorical_crossentropy,
         updater=lasagne.updates.adam,
         validator=val
     )

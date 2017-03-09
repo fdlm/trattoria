@@ -1,7 +1,7 @@
 import random
 
 
-def iterate_batches(data, batch_size, randomise=False, fill_last=True):
+def iterate_batches(data, batch_size, shuffle=False, fill_last=True):
     """
     Generates mini-batches from data.
 
@@ -12,7 +12,7 @@ def iterate_batches(data, batch_size, randomise=False, fill_last=True):
         a tuple (data, target) for an index, and provide its length with len()
     batch_size : int
         Number of data points and targets in each mini-batch
-    randomise : bool
+    shuffle : bool
         Indicates whether to randomize the items in each mini-batch
         or not.
     fill_last : bool
@@ -27,7 +27,7 @@ def iterate_batches(data, batch_size, randomise=False, fill_last=True):
     """
 
     idxs = range(len(data))
-    if randomise:
+    if shuffle:
         random.shuffle(idxs)
 
     # last batch could be too small
@@ -46,12 +46,12 @@ class BatchIterator:
 
     Parameters
     ----------
-    data : Indexable
+    datasource : Indexable
         Data to generate mini-batches from. Needs to be indexable and return
         a tuple (data, target) for an index, and provide its length with len()
     batch_size : int
         Number of data points and targets in each mini-batch
-    randomise : bool
+    shuffle : bool
         Indicates whether to randomize the items in each mini-batch
         or not.
     fill_last : bool
@@ -64,13 +64,24 @@ class BatchIterator:
         mini-batch of data and targets
     """
 
-    def __init__(self, data, batch_size, randomise=False, fill_last=True):
-        self.data = data
+    def __init__(self, datasource, batch_size, shuffle=False, fill_last=True):
+        self.datasource = datasource
         self.batch_size = batch_size
-        self.randomise = randomise
+        self.shuffle = shuffle
         self.fill_last = fill_last
 
     def __iter__(self):
         """Returns the mini batch generator."""
-        return iterate_batches(self.data, self.batch_size,
-                               self.randomise, self.fill_last)
+        return iterate_batches(self.datasource, self.batch_size,
+                               self.shuffle, self.fill_last)
+
+    @property
+    def tshape(self):
+        return self.datasource.tshape
+
+    @property
+    def ttype(self):
+        return self.datasource.ttype
+
+    def __len__(self):
+        return len(self.datasource) // self.batch_size + 1

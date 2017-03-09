@@ -16,5 +16,5 @@ setup(
     license='MIT',
     author='Filip Korzeniowski',
     author_email='filip.korzeniowski@jku.at',
-    install_requires=['numpy', 'Lasagne', 'Theano']
+    install_requires=['numpy', 'Lasagne', 'Theano', 'tqdm']
 )

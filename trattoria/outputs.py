@@ -25,13 +25,13 @@ class ConsoleLog(object):
             header_fmts.append('{:>%ds}' % name_len)
             row_fmts.append('{%s:>%d.6f}' % (name, name_len))
 
-        if 'val.loss' in val_objectives:
-            self.log_val_names.append('val.loss')
-            row_fmts.append('{val.loss:>15.6f}')
+        if 'val_loss' in val_objectives:
+            self.log_val_names.append('val_loss')
+            row_fmts.append('{val_loss:>15.6f}')
             header_fmts.append('{:>15s}')
 
         for name in val_objectives:
-            if name == 'val.loss':
+            if name == 'val_loss':
                 continue
             self.log_val_names.append(name)
             cap_len = max(15, len(name))
@@ -40,7 +40,9 @@ class ConsoleLog(object):
 
         self.header_fmt = ''.join(header_fmts)
         self.row_fmt = ''.join(row_fmts)
-        self.out.write(self.header_fmt.format(*self.log_val_names))
+        header = self.header_fmt.format(*self.log_val_names)
+        self.out.write(header)
+        self.out.write('-' * len(header))
 
     def add(self, epoch, epoch_results):
         if self.row_fmt is None:

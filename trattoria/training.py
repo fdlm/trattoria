@@ -46,7 +46,7 @@ class Validator(object):
                                        for name, obj in observables.items())
         self.batches = batches
 
-        y_hat_test = net.get_outputs(deterministic=True)
+        y_hat_test = net.get_output(deterministic=True)
         y = _tensor(batches.tshape, batches.ttype, 'y')
         self.test_fn = theano.function(
             inputs=net.get_inputs() + [y],
@@ -74,7 +74,7 @@ def train(net, train_batches, num_epochs, observables,
         logs = [ConsoleLog()]
 
     y = _tensor(train_batches.tshape, train_batches.ttype, 'y')
-    y_hat = net.get_outputs()
+    y_hat = net.get_output()
     loss = observables['loss'](y_hat, y)
     params = net.get_params(**tags)
     updates = updater(loss, params)

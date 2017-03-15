@@ -62,6 +62,33 @@ class NeuralNetwork(object):
         """
         return lnn.layers.get_all_params(self.net, **tags)
 
+    def get_param_values(self):
+        """
+        Get network parameter values.
+
+        Returns
+        -------
+        list of numpy arrays containing network parameters
+
+        """
+        return lnn.layers.get_all_param_values(self.net)
+
+    def set_param_values(self, params):
+        """
+        Set network parameter values.
+
+        Parameters
+        ----------
+        params : list of numpy arrays
+            parameters to set
+
+        Returns
+        -------
+        None
+
+        """
+        lnn.layers.set_all_param_values(self.net, params)
+
     def compile_process_function(self):
         """
         Compile process function.

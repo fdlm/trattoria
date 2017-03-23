@@ -4,6 +4,8 @@ import os
 import numpy as np
 import lasagne
 import trattoria
+import theano
+from functools import partial
 
 
 def load_dataset():
@@ -62,7 +64,7 @@ def load_dataset():
 def main():
     print('Loading data...')
     X_train, y_train, X_val, y_val, X_test, y_test = load_dataset()
-    training_set = trattoria.data.DataSource(X_train, y_train.astype(np.int))
+    training_set = trattoria.data.DataSource(X_train[:1000], y_train[:1000].astype(np.int))
     validation_set = trattoria.data.DataSource(X_val, y_val.astype(np.int))
     test_set = trattoria.data.DataSource(X_test, y_test)
 
@@ -102,13 +104,24 @@ def main():
         }
     )
 
+    lr = theano.shared(np.float32(0.001), allow_downcast=True)
+    updater = partial(lasagne.updates.adam, learning_rate=lr)
+    # vs = trattoria.schedules.ValueScheduler(
+    #     lr, {10: 0.01, 50: 0.001, 100: 0.0001}
+    # )
+    vs = trattoria.schedules.PatienceMult(lr, 0.1, 'loss', 2)
+
     trattoria.training.train(
         net=net,
         train_batches=train_batches,
         num_epochs=500,
-        observables=trattoria.objectives.average_categorical_crossentropy,
-        updater=lasagne.updates.adam,
-        validator=val
+        observables={
+            'loss': trattoria.objectives.average_categorical_crossentropy,
+            'lr': lambda *args: lr
+        },
+        updater=updater,
+        validator=val,
+        callbacks=[vs]
     )
 
 

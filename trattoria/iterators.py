@@ -1,4 +1,5 @@
 import random
+import numpy as np
 
 
 def iterate_batches(data, batch_size, shuffle=False, fill_last=True):
@@ -85,3 +86,195 @@ class BatchIterator:
 
     def __len__(self):
         return len(self.datasource) // self.batch_size + 1
+
+
+def _chunks_to_arrays(data_chunks, target_chunks, max_len):
+    """
+    Concatenates chunks of data and targets into a single array.
+
+    This array has a pre-defined "length". If a chunk is shorter than this
+    length, it is padded with the last valid value and corresponding elements
+    are masked in the corresponding mask array.
+
+    Parameters
+    ----------
+    data_chunks : list of numpy arrays
+        Data chunks to concatenate
+    target_chunks : list of numpy arrays
+        Target chunks to concatenate
+    max_len : int
+        Length if the concatenated array
+
+    Returns
+    -------
+    tuple of numpy arrays
+        Concatenated data, target, and mask arrays
+
+    """
+    # create the arrays to store data, targets, and mask
+    feature_shape = data_chunks[0].shape[1:]
+    target_shape = target_chunks[0].shape[1:]
+    data = np.zeros(
+        (len(data_chunks), max_len) + feature_shape,
+        dtype=data_chunks[0].dtype)
+    targets = np.zeros(
+        (len(target_chunks), max_len) + target_shape,
+        dtype=target_chunks[0].dtype)
+    mask = np.zeros(
+        (len(data_chunks), max_len),
+        dtype=np.float32
+    )
+
+    for i in range(len(data_chunks)):
+        dlen = len(data_chunks[i])
+        data[i, :dlen] = data_chunks[i]
+        targets[i, :dlen] = target_chunks[i]
+        mask[i, :dlen] = 1.
+        # Repeat last valid value of data and targets throughout the whole
+        # masked area. This is consistent with the semantics of Lasagne's RNN
+        # implementation, which repeats the previous output value at every
+        # masked element. Also, Spaghetti (CRF Library) requires it to be this
+        # way.
+        data[i, dlen:] = data[i, dlen - 1]
+        targets[i, dlen:] = targets[i, dlen - 1]
+
+    return data, mask, targets
+
+
+def iterate_sequences(datasources, batch_size, shuffle=False,
+                      fill_last=True, max_seq_len=None):
+    """
+    Generates mini batches of sequences by iterating over a list of
+    data sources.
+
+    This generator generates mini batches of :param:batch_size sub-sequences
+    of length :param:max_seq_len. Each :class:DataSource contained in the
+    list of data sources is considered a sequence. If too long, sequences
+    are broken into several sub-sequences in a mini batch.
+
+    Parameters
+    ----------
+    datasources : list of data sources
+        Data sources to generate mini-batches from
+    batch_size : int
+        Number of (sub-)sequences per mini batch
+    shuffle : bool
+        Indicates whether to randomise the order of data sources
+    fill_last : bool
+        Indicates whether to fill the last mini batch with sequences from a
+        random data source if there is not enough data available
+        Maximum length of each sequence in a data source
+    max_seq_len : int or None
+        Maximum sequence length of each sub-sequence in the mini batch. If
+        None, the maximum length is determined to be the longest data source
+        in the mini-batch. Note that this might result in different
+        sequence lengths in each mini batch.
+
+    Yields
+    ------
+    tuple of numpy arrays
+        mini batch of sub-sequences with data, target, and mask arrays
+
+    """
+
+    ds_idxs = range(len(datasources))
+    if shuffle:
+        random.shuffle(ds_idxs)
+
+    data_chunks = []
+    target_chunks = []
+
+    max_len = max_seq_len or 0
+    for ds_idx in ds_idxs:
+        ds = datasources[ds_idx]
+        # we chunk the data according to sequence_length
+        for d, t in iterate_batches(ds, max_seq_len or len(ds),
+                                    shuffle=False, fill_last=False):
+            data_chunks.append(d)
+            target_chunks.append(t)
+            max_len = max(max_len, len(d))
+
+            if len(data_chunks) == batch_size:
+                yield _chunks_to_arrays(data_chunks, target_chunks, max_len)
+                data_chunks = []
+                target_chunks = []
+                max_len = max_seq_len or 0
+
+    # after we processed all data sources, there might be some chunks left.
+    while fill_last and len(data_chunks) < batch_size:
+        # add more sequences until we fill it up
+        # get a random data source
+        ds_idx = random.sample(ds_idxs, 1)[0]
+        ds = datasources[ds_idx]
+        for d, t in iterate_batches(ds, max_seq_len or len(ds),
+                                    shuffle=False, fill_last=False):
+            data_chunks.append(d)
+            target_chunks.append(t)
+            max_len = max(max_len, len(d))
+
+            if len(data_chunks) == batch_size:
+                # we filled it!
+                break
+
+    if len(data_chunks) > 0:
+        yield _chunks_to_arrays(data_chunks, target_chunks, max_len)
+
+
+class SequenceIterator:
+    """
+    Iterates over mini batches of sequences from an aggregated data source.
+
+    Each mini batch contains :param:batch_size sequences of length
+    :param:max_seq_len. Each :class:DataSource contained in the
+    data source list is considered a sequence. If too long, it is
+    broken into several sub-sequences in a mini batch.
+
+    Parameters
+    ----------
+    datasources : list of data sources
+        List of Data source to generate mini-batches from
+    batch_size : int
+        Number of (sub-)sequences per mini batch
+    randomise : bool
+        Indicates whether to randomise the order of data sources
+    expand : bool
+        Indicates whether to fill the last mini batch with sequences from a
+        random data source if there is not enough data available
+        Maximum length of each sequence in a data source
+    max_seq_len : int or None
+        Maximum sequence length of each sub-sequence in the mini batch. If
+        None, the maximum length is determined to be the longest data source
+        in the mini-batch. Note that this might result in different
+        sequence lengths in each mini batch.
+
+    Yields
+    ------
+    tuple of numpy arrays
+        mini batch of sub-sequences with data, target, and mask arrays
+    """
+
+    def __init__(self, datasources, batch_size, randomise=False, expand=True,
+                 max_seq_len=None):
+        if len(datasources) == 0:
+            raise ValueError('Need at least one data source!')
+        self.datasources = datasources
+        self.batch_size = batch_size
+        self.randomise = randomise
+        self.expand = expand
+        self.max_seq_len = max_seq_len
+
+    def __iter__(self):
+        """Returns the sequence mini batch generator."""
+        return iterate_sequences(self.datasources, self.batch_size,
+                                 self.randomise, self.expand, self.max_seq_len)
+
+    @property
+    def tshape(self):
+        return self.datasources[0].tshape
+
+    @property
+    def ttype(self):
+        return self.datasources[0].ttype
+
+    def __len__(self):
+        return len(self.datasources) // self.batch_size + 1

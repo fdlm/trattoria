@@ -21,5 +21,10 @@ def average_categorical_accuracy(predictions, targets, mask=None):
     return func(predictions, targets)
 
 
+def average_squared_error(predictions, targets, mask=None):
+    func = average(lasagne.objectives.squared_error, mask)
+    return func(predictions, targets)
+
+
 def masked(loss_func, mask):
     return partial(loss_func, mask=mask)

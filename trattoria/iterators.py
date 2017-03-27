@@ -88,7 +88,7 @@ class BatchIterator:
         return len(self.datasource) // self.batch_size + 1
 
 
-def _chunks_to_arrays(data_chunks, target_chunks, max_len):
+def _chunks_to_arrays(data_chunks, target_chunks, max_len, return_mask):
     """
     Concatenates chunks of data and targets into a single array.
 
@@ -138,11 +138,14 @@ def _chunks_to_arrays(data_chunks, target_chunks, max_len):
         data[i, dlen:] = data[i, dlen - 1]
         targets[i, dlen:] = targets[i, dlen - 1]
 
-    return data, mask, targets
+    if return_mask:
+        return data, mask, targets
+    else:
+        return data, targets
 
 
 def iterate_sequences(datasources, batch_size, shuffle=False,
-                      fill_last=True, max_seq_len=None):
+                      fill_last=True, max_seq_len=None, mask=True):
     """
     Generates mini batches of sequences by iterating over a list of
     data sources.
@@ -195,7 +198,8 @@ def iterate_sequences(datasources, batch_size, shuffle=False,
             max_len = max(max_len, len(d))
 
             if len(data_chunks) == batch_size:
-                yield _chunks_to_arrays(data_chunks, target_chunks, max_len)
+                yield _chunks_to_arrays(data_chunks, target_chunks, max_len,
+                                        mask)
                 data_chunks = []
                 target_chunks = []
                 max_len = max_seq_len or 0
@@ -217,7 +221,7 @@ def iterate_sequences(datasources, batch_size, shuffle=False,
                 break
 
     if len(data_chunks) > 0:
-        yield _chunks_to_arrays(data_chunks, target_chunks, max_len)
+        yield _chunks_to_arrays(data_chunks, target_chunks, max_len, mask)
 
 
 class SequenceIterator:
@@ -254,7 +258,7 @@ class SequenceIterator:
     """
 
     def __init__(self, datasources, batch_size, randomise=False, expand=True,
-                 max_seq_len=None):
+                 max_seq_len=None, mask=True):
         if len(datasources) == 0:
             raise ValueError('Need at least one data source!')
         self.datasources = datasources
@@ -262,11 +266,13 @@ class SequenceIterator:
         self.randomise = randomise
         self.expand = expand
         self.max_seq_len = max_seq_len
+        self.mask = mask
 
     def __iter__(self):
         """Returns the sequence mini batch generator."""
         return iterate_sequences(self.datasources, self.batch_size,
-                                 self.randomise, self.expand, self.max_seq_len)
+                                 self.randomise, self.expand, self.max_seq_len,
+                                 self.mask)
 
     @property
     def tshape(self):

@@ -1,4 +1,10 @@
+import os
 from tqdm import tqdm
+# TODO: make this nicer
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 
 class ConsoleLog(object):
@@ -49,3 +55,51 @@ class ConsoleLog(object):
             raise ValueError('Use start() before add()!')
         row = self.row_fmt.format(**epoch_results)
         self.out.write('{:>5d}'.format(epoch) + row)
+
+
+class YamlLog(object):
+
+    def __init__(self, out, load=False):
+        import yaml
+        self.out = out
+        self.load = load
+        if not self.load:
+            self.log = {}
+        else:
+            self.log = yaml.load(out)
+
+    def start(self, train_objectives, val_objectives):
+        for o in train_objectives:
+            if self.load and o not in self.log:
+                raise ValueError('Training objective "{}" '
+                                 'not in YAML log.'.format(o))
+            self.log[o] = self.log.get(o, [])
+        for o in val_objectives:
+            if self.load and o not in self.log:
+                raise ValueError('Validation objective "{}" '
+                                 'not in YAML log.'.format(o))
+            self.log[o] = self.log.get(o, [])
+
+    def add(self, epoch, epoch_results):
+        import yaml
+        for name, value in epoch_results.items():
+            self.log[name].append(value)
+        yaml.dump(self.log, self.out)
+
+
+class ModelCheckpoint(object):
+
+    def __init__(self, net, file_fmt, max_history=0):
+        self.net = net
+        self.history = []
+        self.max_history = max_history
+        self.file_fmt = file_fmt
+
+    def __call__(self, epoch, epoch_results):
+        filename = self.file_fmt.format(epoch=epoch, **epoch_results)
+        with open(filename, 'wb') as f:
+            pickle.dump(self.net.get_param_values(), f,
+                        protocol=pickle.HIGHEST_PROTOCOL)
+            self.history.append(filename)
+        if self.max_history and len(self.history) > self.max_history:
+            os.remove(self.history.pop(0))

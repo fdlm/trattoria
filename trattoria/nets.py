@@ -145,3 +145,19 @@ class NeuralNetwork(object):
             self.net,
             pickle.load(open(filename, 'rb'))
         )
+
+    def __str__(self):
+        repr_str = ''
+        for layer in lnn.layers.get_all_layers(self.net):
+            if isinstance(layer, lnn.layers.DropoutLayer):
+                repr_str += '\t -> dropout p = {:g}\n'.format(layer.p)
+                continue
+
+            repr_str += '\t{:20s} {:>20s}'.format(
+                type(layer).__name__, layer.output_shape)
+            if layer.name:
+                repr_str += ' - {}'.format(layer.name)
+            repr_str += '\n'
+
+        # return everything except the last newline
+        return repr_str[:-1]

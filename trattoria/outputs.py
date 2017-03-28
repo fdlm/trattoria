@@ -59,14 +59,14 @@ class ConsoleLog(object):
 
 class YamlLog(object):
 
-    def __init__(self, out, load=False):
+    def __init__(self, filename, load=False):
         import yaml
-        self.out = out
+        self.filename = filename
         self.load = load
         if not self.load:
             self.log = {}
         else:
-            self.log = yaml.load(out)
+            self.log = yaml.load(open(filename))
 
     def start(self, train_objectives, val_objectives):
         for o in train_objectives:
@@ -84,7 +84,8 @@ class YamlLog(object):
         import yaml
         for name, value in epoch_results.items():
             self.log[name].append(value)
-        yaml.dump(self.log, self.out)
+        with open(self.filename, 'w') as f:
+            yaml.dump(self.log, f)
 
 
 class ModelCheckpoint(object):

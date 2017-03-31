@@ -63,19 +63,21 @@ class YamlLog(object):
         import yaml
         self.filename = filename
         self.load = load
-        if not self.load:
+        if not self.load or not os.path.exists(filename):
+            self.loaded = False
             self.log = {}
         else:
+            self.loaded = True
             self.log = yaml.load(open(filename))
 
     def start(self, train_objectives, val_objectives):
         for o in train_objectives:
-            if self.load and o not in self.log:
+            if self.loaded and o not in self.log:
                 raise ValueError('Training objective "{}" '
                                  'not in YAML log.'.format(o))
             self.log[o] = self.log.get(o, [])
         for o in val_objectives:
-            if self.load and o not in self.log:
+            if self.loaded and o not in self.log:
                 raise ValueError('Validation objective "{}" '
                                  'not in YAML log.'.format(o))
             self.log[o] = self.log.get(o, [])

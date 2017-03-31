@@ -20,15 +20,28 @@ class MonitoredUpdater(object):
         self.updater = updater
         self.updater_params = updater_params
         self.updates = None
+        self.init_status = None
 
+    @property
     def status(self):
         if self.updates is None:
             raise ValueError('Updater not created yet!')
         return [shared_var.get_value() for shared_var in self.updates]
 
+    @status.setter
+    def status(self, status):
+        if self.updates is None:
+            raise ValueError('Updater not created yet!')
+        if len(status) != len(self.updates):
+            raise ValueError('Incompatible status!')
+        for shared_var, value in zip(self.updates, status):
+            shared_var.set_value(value)
+
     def __call__(self, loss_or_grads, params):
         self.updates = self.updater(loss_or_grads, params,
                                     **self.updater_params)
+        if self.init_status:
+            self.status = self.init_status
         return self.updates
 
 
@@ -137,7 +150,7 @@ class Validator(object):
 
 def train(net, train_batches, num_epochs, observables,
           updater, regularizers=None, validator=None, logs=None,
-          callbacks=None, **tags):
+          callbacks=None, init_epoch=0, **tags):
 
     if not isinstance(observables, dict):
         observables = {'loss': observables}
@@ -170,7 +183,8 @@ def train(net, train_batches, num_epochs, observables,
         log.start(observables, validator.observables if validator else None)
 
     try:
-        for epoch in tqdm(range(num_epochs), ncols=80, leave=False):
+        epochs = range(init_epoch, init_epoch + num_epochs)
+        for epoch in tqdm(epochs, ncols=80, leave=False):
             observed = iterate(train_batches, train_fn, observables)
             if validator:
                 observed.update(validator())

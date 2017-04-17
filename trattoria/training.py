@@ -5,13 +5,23 @@ from collections import OrderedDict
 import theano
 import theano.tensor
 import operator
+import numpy as np
 from tqdm import tqdm
 
 from trattoria.outputs import ConsoleLog
 
 
+class Status:
+    FINISHED = 0
+    ERROR = 1
+    STOPPED_EARLY = 2
+
+
 class StopTraining(Exception):
-    pass
+
+    def __init__(self, status, message):
+        self.status = status
+        self.message = message
 
 
 class MonitoredUpdater(object):
@@ -84,13 +94,27 @@ class CountdownTrigger(object):
                 cb(epoch, epoch_results)
 
 
-def stop_training(*args, **kwargs):
-    raise StopTraining()
+class NanLossTrigger(object):
+
+    def __init__(self, callbacks):
+        self.callbacks = callbacks
+
+    def __call__(self, epoch, epoch_results):
+        if np.isnan(epoch_results['loss']):
+            for cb in self.callbacks:
+                cb(epoch, epoch_results)
+
+
+def _stop_training_early(*args, **kwargs):
+    raise StopTraining(
+        Status.STOPPED_EARLY,
+        message='Early Stopping.'
+    )
 
 
 def early_stopping(patience, observed, compare=operator.lt):
     countdown = CountdownTrigger(
-        callbacks=[stop_training],
+        callbacks=[_stop_training_early],
         patience=patience
     )
     return ImprovementTrigger(
@@ -99,6 +123,17 @@ def early_stopping(patience, observed, compare=operator.lt):
         compare=compare,
         no_trigger_callbacks=[countdown]
     )
+
+
+def _raise_nan_loss(*args, **kwargs):
+    raise StopTraining(
+        Status.ERROR,
+        message='Encountered NaN Loss.'
+    )
+
+
+def stop_on_nan():
+    return NanLossTrigger([_raise_nan_loss])
 
 
 def _tensor(shape, dtype, name):
@@ -195,6 +230,8 @@ def train(net, train_batches, num_epochs, observables,
             for callback in callbacks:
                 callback(epoch, observed)
 
-    except StopTraining:
-        pass
+    except StopTraining as st:
+        return st.status
+
+    return Status.FINISHED
 

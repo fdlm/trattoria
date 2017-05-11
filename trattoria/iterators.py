@@ -1,5 +1,6 @@
 import random
 import numpy as np
+import functools
 
 
 def iterate_batches(data, batch_size, shuffle=False, fill_last=True):
@@ -284,3 +285,54 @@ class SequenceIterator:
 
     def __len__(self):
         return len(self.datasources) // self.batch_size + 1
+
+
+class SubsetIterator:
+
+    def __init__(self, batch_iterator, percentage=1.0):
+        self.percentage = percentage
+        self.batch_iterator = batch_iterator
+
+    def __iter__(self):
+        for i, batch in enumerate(self.batch_iterator):
+            yield batch
+            if i > len(self):
+                break
+
+    @property
+    def tshape(self):
+        return self.batch_iterator.tshape
+
+    @property
+    def ttype(self):
+        return self.batch_iterator.ttype
+
+    def __len__(self):
+        return int(len(self.batch_iterator) * self.percentage)
+
+
+def compose(*functions):
+    """Compose a list of function to one."""
+    return functools.reduce(lambda f, g: lambda x: f(g(x)), functions,
+                            lambda x: x)
+
+
+class AugmentedIterator:
+
+    def __init__(self, batch_iterator, *augment_fns):
+        self.batch_iterator = batch_iterator
+        self.augment = compose(*augment_fns)
+
+    def __iter__(self):
+        return self.augment(self.batch_iterator.__iter__())
+
+    @property
+    def tshape(self):
+        return self.batch_iterator.tshape
+
+    @property
+    def ttype(self):
+        return self.batch_iterator.ttype
+
+    def __len__(self):
+        return len(self.batch_iterator)

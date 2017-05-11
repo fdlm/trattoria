@@ -137,8 +137,9 @@ def stop_on_nan():
 
 
 def _tensor(shape, dtype, name):
+    # TODO: find a reliable way to get the correct tensor type
     return theano.tensor.TensorType(
-        dtype, broadcastable=[False] * (max(1, len(shape)) + 2))(name)
+        dtype, broadcastable=[False] * (max(1, len(shape)) + 0))(name)
 
 
 def iterate(batch_iterator, func, observables):
@@ -185,7 +186,7 @@ class Validator(object):
 
 def train(net, train_batches, num_epochs, observables,
           updater, regularizers=None, validator=None, logs=None,
-          callbacks=None, init_epoch=0, **tags):
+          callbacks=None, init_epoch=0, y=None, **tags):
 
     if not isinstance(observables, dict):
         observables = {'loss': observables}
@@ -202,10 +203,10 @@ def train(net, train_batches, num_epochs, observables,
     if logs is None:
         logs = [ConsoleLog()]
 
-    y = _tensor(train_batches.tshape, train_batches.ttype, 'y')
+    y = y or _tensor(train_batches.tshape, train_batches.ttype, 'y')
     y_hat = net.get_output()
     loss = observables['loss'](y_hat, y)
-    params = net.get_params(**tags)
+    params = net.get_params(trainable=True, **tags)
     updates = updater(sum(regularizers, loss), params)
 
     train_fn = theano.function(

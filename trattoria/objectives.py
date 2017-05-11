@@ -18,7 +18,12 @@ def average_categorical_crossentropy(predictions, targets, mask=None, eta=1e-7):
 
 
 def average_categorical_accuracy(predictions, targets, mask=None):
-    func = average(lasagne.objectives.categorical_accuracy, mask)
+    def acc(pred, targ):
+        return tt.cast(
+            lasagne.objectives.categorical_accuracy(pred, targ),
+            'floatX'
+        )
+    func = average(acc, mask)
     return func(predictions, targets)
 
 

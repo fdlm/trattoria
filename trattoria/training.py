@@ -1,11 +1,12 @@
 from __future__ import print_function
 
+import operator
+import time
 from collections import OrderedDict
 
+import numpy as np
 import theano
 import theano.tensor
-import operator
-import numpy as np
 from tqdm import tqdm
 
 from trattoria.outputs import ConsoleLog
@@ -139,7 +140,7 @@ def stop_on_nan():
 def _tensor(shape, dtype, name):
     # TODO: find a reliable way to get the correct tensor type
     return theano.tensor.TensorType(
-        dtype, broadcastable=[False] * (max(1, len(shape)) + 0))(name)
+        dtype, broadcastable=[False] * (max(1, len(shape)) + 1))(name)
 
 
 def iterate(batch_iterator, func, observables):
@@ -147,15 +148,26 @@ def iterate(batch_iterator, func, observables):
     n_iter = 0
 
     batches = tqdm(batch_iterator, leave=False, ncols=80)
+
+    batch_time = time.time()
     for batch in batches:
+        theano_time = time.time()
         batch_objectives = func(*batch)
+        theano_time = time.time() - theano_time
+
         for name, obj_val in batch_objectives.items():
             vals[name] += obj_val
         n_iter += 1
 
+        batch_time = time.time() - batch_time
+        perc_theano = int((theano_time / batch_time) * 100)
+
         if 'loss' in vals:
             batches.set_description(
-                'Loss: {:6.4f}'.format(vals['loss'] / n_iter))
+                'Loss: {:6.4f} (%th: {:3d})'.format(vals['loss'] / n_iter,
+                                                    perc_theano)
+            )
+        batch_time = time.time()
 
     for name, val in vals.items():
         vals[name] = val / n_iter

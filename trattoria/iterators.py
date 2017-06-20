@@ -37,9 +37,11 @@ def iterate_batches(data, batch_size, shuffle=False, fill_last=True):
         # fill up with random indices
         idxs += random.sample(idxs, batch_size - len(data) % batch_size)
 
-    while len(idxs) > 0:
-        batch_idxs, idxs = idxs[:batch_size], idxs[batch_size:]
+    i = 0
+    while i < len(idxs):
+        batch_idxs = idxs[i:i + batch_size]
         yield data[batch_idxs]
+        i += batch_size
 
 
 class BatchIterator:

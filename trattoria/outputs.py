@@ -1,6 +1,7 @@
 import os
+import yaml
 from tqdm import tqdm
-# TODO: make this nicer
+
 try:
     import cPickle as pickle
 except ImportError:
@@ -60,7 +61,6 @@ class ConsoleLog(object):
 class YamlLog(object):
 
     def __init__(self, filename, load=False):
-        import yaml
         self.filename = filename
         self.load = load
         if not self.load or not os.path.exists(filename):
@@ -71,6 +71,8 @@ class YamlLog(object):
             self.log = yaml.load(open(filename))
 
     def start(self, train_objectives, val_objectives):
+        if val_objectives is None:
+            val_objectives = []
         for o in train_objectives:
             if self.loaded and o not in self.log:
                 raise ValueError('Training objective "{}" '

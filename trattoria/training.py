@@ -137,12 +137,6 @@ def stop_on_nan():
     return NanLossTrigger([_raise_nan_loss])
 
 
-def _tensor(shape, dtype, name):
-    # TODO: find a reliable way to get the correct tensor type
-    return theano.tensor.TensorType(
-        dtype, broadcastable=[False] * (max(1, len(shape)) + 1))(name)
-
-
 def iterate(batch_iterator, func, observables):
     vals = OrderedDict((name, 0.0) for name in observables)
     n_iter = 0
@@ -185,7 +179,7 @@ class Validator(object):
         self.batches = batches
 
         y_hat_test = net.get_output(deterministic=True)
-        y = _tensor(batches.tshape, batches.ttype, 'y')
+        y = net.get_output_tensor()
         self.test_fn = theano.function(
             inputs=net.get_inputs() + [y],
             outputs={name: obj(y_hat_test, y)
@@ -198,7 +192,7 @@ class Validator(object):
 
 def train(net, train_batches, num_epochs, observables,
           updater, regularizers=None, validator=None, logs=None,
-          callbacks=None, init_epoch=0, y=None, **tags):
+          callbacks=None, init_epoch=0, **tags):
 
     if not isinstance(observables, dict):
         observables = {'loss': observables}
@@ -215,7 +209,7 @@ def train(net, train_batches, num_epochs, observables,
     if logs is None:
         logs = [ConsoleLog()]
 
-    y = y or _tensor(train_batches.tshape, train_batches.ttype, 'y')
+    y = net.get_output_tensor()
     y_hat = net.get_output()
     loss = observables['loss'](y_hat, y)
     params = net.get_params(trainable=True, **tags)

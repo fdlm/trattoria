@@ -38,57 +38,11 @@ def iterate_batches(data, batch_size, shuffle=False, fill_last=True):
         idxs += random.sample(idxs, batch_size - len(data) % batch_size)
 
     i = 0
+
     while i < len(idxs):
         batch_idxs = idxs[i:i + batch_size]
         yield data[batch_idxs]
         i += batch_size
-
-
-class BatchIterator:
-    """
-    Iterates over mini batches of data.
-
-    Parameters
-    ----------
-    datasource : Indexable
-        Data to generate mini-batches from. Needs to be indexable and return
-        a tuple (data, target) for an index, and provide its length with len()
-    batch_size : int
-        Number of data points and targets in each mini-batch
-    shuffle : bool
-        Indicates whether to randomize the items in each mini-batch
-        or not.
-    fill_last : bool
-        Indicates whether to fill up the last mini-batch with
-        random data points if there is not enough data available.
-
-    Yields
-    ------
-    tuple of numpy arrays
-        mini-batch of data and targets
-    """
-
-    def __init__(self, datasource, batch_size, shuffle=False, fill_last=True):
-        self.datasource = datasource
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-        self.fill_last = fill_last
-
-    def __iter__(self):
-        """Returns the mini batch generator."""
-        return iterate_batches(self.datasource, self.batch_size,
-                               self.shuffle, self.fill_last)
-
-    @property
-    def tshape(self):
-        return self.datasource.tshape
-
-    @property
-    def ttype(self):
-        return self.datasource.ttype
-
-    def __len__(self):
-        return len(self.datasource) // self.batch_size + 1
 
 
 def _chunks_to_arrays(data_chunks, target_chunks, max_len, return_mask):
@@ -147,8 +101,43 @@ def _chunks_to_arrays(data_chunks, target_chunks, max_len, return_mask):
         return data, targets
 
 
+def _chunks_to_arrays_cls(data_chunks, target_chunks, max_len, return_mask):
+    # create the arrays to store data, targets, and mask
+    max_len = max(dc.shape[1] for dc in data_chunks)
+    feature_shape = data_chunks[0].shape[2:]
+    target_shape = target_chunks[0].shape[1:]
+    data = np.zeros(
+        (len(data_chunks), max_len) + feature_shape,
+        dtype=data_chunks[0].dtype)
+    targets = np.zeros(
+        (len(target_chunks),) + target_shape,
+        dtype=target_chunks[0].dtype)
+    mask = np.zeros(
+        (len(data_chunks), max_len),
+        dtype=np.float32
+    )
+
+    for i in range(len(data_chunks)):
+        dlen = data_chunks[i].shape[1]
+        data[i, :dlen] = data_chunks[i][0]
+        targets[i] = target_chunks[i][0]
+        mask[i, :dlen] = 1.
+        # Repeat last valid value of data and targets throughout the whole
+        # masked area. This is consistent with the semantics of Lasagne's RNN
+        # implementation, which repeats the previous output value at every
+        # masked element. Also, Spaghetti (CRF Library) requires it to be this
+        # way.
+        data[i, dlen:] = data[i, dlen - 1]
+
+    if return_mask:
+        return data, mask, targets
+    else:
+        return data, targets
+
+
 def iterate_sequences(datasources, batch_size, shuffle=False,
-                      fill_last=True, max_seq_len=None, mask=True):
+                      fill_last=True, max_seq_len=None, mask=True,
+                      compile_chunk_fn=_chunks_to_arrays):
     """
     Generates mini batches of sequences by iterating over a list of
     data sources.
@@ -201,8 +190,8 @@ def iterate_sequences(datasources, batch_size, shuffle=False,
             max_len = max(max_len, len(d))
 
             if len(data_chunks) == batch_size:
-                yield _chunks_to_arrays(data_chunks, target_chunks, max_len,
-                                        mask)
+                yield compile_chunk_fn(data_chunks, target_chunks, max_len,
+                                       mask)
                 data_chunks = []
                 target_chunks = []
                 max_len = max_seq_len or 0
@@ -224,7 +213,46 @@ def iterate_sequences(datasources, batch_size, shuffle=False,
                 break
 
     if len(data_chunks) > 0:
-        yield _chunks_to_arrays(data_chunks, target_chunks, max_len, mask)
+        yield compile_chunk_fn(data_chunks, target_chunks, max_len, mask)
+
+
+class BatchIterator:
+    """
+    Iterates over mini batches of data.
+
+    Parameters
+    ----------
+    datasource : Indexable
+        Data to generate mini-batches from. Needs to be indexable and return
+        a tuple (data, target) for an index, and provide its length with len()
+    batch_size : int
+        Number of data points and targets in each mini-batch
+    shuffle : bool
+        Indicates whether to randomize the items in each mini-batch
+        or not.
+    fill_last : bool
+        Indicates whether to fill up the last mini-batch with
+        random data points if there is not enough data available.
+
+    Yields
+    ------
+    tuple of numpy arrays
+        mini-batch of data and targets
+    """
+
+    def __init__(self, datasource, batch_size, shuffle=False, fill_last=True):
+        self.datasource = datasource
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.fill_last = fill_last
+
+    def __iter__(self):
+        """Returns the mini batch generator."""
+        return iterate_batches(self.datasource, self.batch_size,
+                               self.shuffle, self.fill_last)
+
+    def __len__(self):
+        return len(self.datasource) // self.batch_size + 1
 
 
 class SequenceIterator:
@@ -260,33 +288,46 @@ class SequenceIterator:
         mini batch of sub-sequences with data, target, and mask arrays
     """
 
-    def __init__(self, datasources, batch_size, randomise=False, expand=True,
+    def __init__(self, datasources, batch_size, shuffle=False, fill_last=True,
                  max_seq_len=None, mask=True):
         if len(datasources) == 0:
             raise ValueError('Need at least one data source!')
         self.datasources = datasources
         self.batch_size = batch_size
-        self.randomise = randomise
-        self.expand = expand
+        self.shuffle = shuffle
+        self.fill_last = fill_last
         self.max_seq_len = max_seq_len
         self.mask = mask
 
     def __iter__(self):
         """Returns the sequence mini batch generator."""
         return iterate_sequences(self.datasources, self.batch_size,
-                                 self.randomise, self.expand, self.max_seq_len,
+                                 self.shuffle, self.fill_last, self.max_seq_len,
                                  self.mask)
-
-    @property
-    def tshape(self):
-        return self.datasources[0].tshape
-
-    @property
-    def ttype(self):
-        return self.datasources[0].ttype
 
     def __len__(self):
         return len(self.datasources) // self.batch_size + 1
+
+
+class SequenceClassificationIterator:
+
+    def __init__(self, datasources, batch_size, shuffle=False, fill_last=True):
+        self.datasources = datasources
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.fill_last = fill_last
+
+    def __iter__(self):
+        return iterate_sequences(
+            self.datasources,
+            self.batch_size,
+            self.shuffle,
+            self.fill_last,
+            compile_chunk_fn=_chunks_to_arrays_cls)
+
+    def __len__(self):
+        return len(self.datasources) // self.batch_size + 1
+
 
 
 class SubsetIterator:

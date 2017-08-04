@@ -13,9 +13,10 @@ class NeuralNetwork(object):
         Output layer handle that represents the neural network
     """
 
-    def __init__(self, net):
+    def __init__(self, net, output_tensor):
         self.net = net
         self._process = None
+        self._output_tensor = output_tensor
 
     def get_output(self, **kwargs):
         """
@@ -32,6 +33,17 @@ class NeuralNetwork(object):
 
         """
         return lnn.layers.get_output(self.net, **kwargs)
+
+    def get_output_tensor(self):
+        """
+        Get symbolic output tensor.
+
+        Returns
+        -------
+        Theano tensor variable
+
+        """
+        return self._output_tensor
 
     def get_inputs(self):
         """

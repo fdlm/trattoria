@@ -130,3 +130,8 @@ class AggregatedDataSource(object):
     @property
     def ttype(self):
         return self._datasources[0].type(-1)
+
+    def __str__(self):
+        return '{}: N_ds={} N={}  dshape={}  tshape={}'.format(
+            self.__class__.__name__, len(self.datasources), len(self),
+            self.dshape, self.tshape)

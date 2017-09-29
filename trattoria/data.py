@@ -4,9 +4,6 @@ import numpy as np
 class DataSource(object):
 
     def __init__(self, data, name=''):
-        if len(data) < 2:
-            raise ValueError('Need at least input and targets!')
-
         n_data = data[0].shape[0]
         for i, d in enumerate(data):
             if d.shape[0] != n_data:
@@ -83,12 +80,9 @@ class AggregatedDataSource(object):
         elif isinstance(idx, np.ndarray):
             ds_idxs, d_idxs = self._get_ds_idx(idx)
             data = []
-            targets = []
             for ds_idx, d_idx in zip(ds_idxs, d_idxs):
-                d, t = self._datasources[ds_idx][d_idx]
-                data.append(d)
-                targets.append(t)
-            return data, targets
+                data.append(self._datasources[ds_idx][d_idx])
+            return zip(*data)
         elif isinstance(idx, slice):
             return self[np.arange(idx.start or 0, idx.stop or len(self),
                                   idx.step or 1)]

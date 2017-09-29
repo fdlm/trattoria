@@ -3,7 +3,8 @@ import numpy as np
 import functools
 
 
-def iterate_batches(data, batch_size, shuffle=False, fill_last=True):
+def iterate_batches(data, batch_size, shuffle=False, fill_last=True,
+                    max_iter=None):
     """
     Generates mini-batches from data.
 
@@ -20,6 +21,9 @@ def iterate_batches(data, batch_size, shuffle=False, fill_last=True):
     fill_last : bool
         Indicates whether to fill up the last mini-batch with
         random data points if there is not enough data available.
+    max_iter : int, optional
+        Maximum number of iterations to perform. If None, iterate over the
+        whole dataset
 
     Yields
     ------
@@ -27,6 +31,7 @@ def iterate_batches(data, batch_size, shuffle=False, fill_last=True):
         mini-batch of data and targets
 
     """
+    max_iter = max_iter or np.inf
 
     idxs = range(len(data))
     if shuffle:
@@ -38,11 +43,12 @@ def iterate_batches(data, batch_size, shuffle=False, fill_last=True):
         idxs += random.sample(idxs, batch_size - len(data) % batch_size)
 
     i = 0
-
-    while i < len(idxs):
+    n_iter = 0
+    while n_iter < max_iter and i < len(idxs):
         batch_idxs = idxs[i:i + batch_size]
         yield data[batch_idxs]
         i += batch_size
+        n_iter += 1
 
 
 def _chunks_to_arrays(data_chunks, target_chunks, max_len, return_mask):
@@ -233,6 +239,9 @@ class BatchIterator:
     fill_last : bool
         Indicates whether to fill up the last mini-batch with
         random data points if there is not enough data available.
+    max_iter : int, optional
+        Maximum number of iterations to perform. If None, iterate over the
+        whole dataset
 
     Yields
     ------
@@ -240,19 +249,21 @@ class BatchIterator:
         mini-batch of data and targets
     """
 
-    def __init__(self, datasource, batch_size, shuffle=False, fill_last=True):
+    def __init__(self, datasource, batch_size, shuffle=False, fill_last=True,
+                 max_iter=None):
         self.datasource = datasource
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.fill_last = fill_last
+        self.max_iter = max_iter
 
     def __iter__(self):
         """Returns the mini batch generator."""
         return iterate_batches(self.datasource, self.batch_size,
-                               self.shuffle, self.fill_last)
+                               self.shuffle, self.fill_last, self.max_iter)
 
     def __len__(self):
-        return len(self.datasource) // self.batch_size + 1
+        return self.max_iter or len(self.datasource) // self.batch_size + 1
 
 
 class SequenceIterator:
@@ -306,7 +317,8 @@ class SequenceIterator:
                                  self.mask)
 
     def __len__(self):
-        return len(self.datasources) // self.batch_size + 1
+        return sum(len(ds) // self.max_seq_len + 1
+                   for ds in self.datasources) // self.batch_size + 1
 
 
 class SequenceClassificationIterator:

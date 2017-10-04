@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import functools
+import Queue
 
 
 def iterate_batches(data, batch_size, shuffle=False, fill_last=True,
@@ -391,3 +392,77 @@ class AugmentedIterator:
 
     def __len__(self):
         return len(self.batch_iterator)
+
+
+class ThreadedIterator:
+
+    def __init__(self, batch_iterator, n_cached=10, pre_cache=True):
+        self.n_cached = n_cached
+        self.batch_iterator = batch_iterator
+        self.pre_cache = pre_cache
+
+        if self.pre_cache:
+            # already prepare queue with batches
+            self._batch_gen = threaded(self.batch_iterator, self.n_cached)
+
+    def __iter__(self):
+        if self.pre_cache:
+            cur_batch_gen = self._batch_gen
+            # already start preparing queue for next time
+            self._batch_gen = threaded(self.batch_iterator, self.n_cached)
+            return cur_batch_gen
+        else:
+            return threaded(self.batch_iterator, self.n_cached)
+
+    @property
+    def tshape(self):
+        return self.batch_iterator.tshape
+
+    @property
+    def ttype(self):
+        return self.batch_iterator.ttype
+
+    def __len__(self):
+        return len(self.batch_iterator)
+
+
+def threaded(generator, n_cached=10):
+    """
+    Lets a generator run in a seperate thread and fill a queue of results.
+
+    Parameters
+    ----------
+    generator : Generator
+        Generator to compute in a separate thread
+    n_cached : int
+        Number of cached results
+
+    Returns
+    -------
+    Generator
+        A generator that yields items from the result queue
+    """
+    queue = Queue.Queue(maxsize=n_cached)
+    end_marker = object()
+
+    # define producer
+    def producer():
+        for item in generator:
+            queue.put(item)
+        queue.put(end_marker)
+
+    # start producer
+    import threading
+    thread = threading.Thread(target=producer)
+    thread.daemon = True
+    thread.start()
+
+    def consumer():
+        # run as consumer
+        item = queue.get()
+        while item is not end_marker:
+            yield item
+            queue.task_done()
+            item = queue.get()
+
+    return consumer()

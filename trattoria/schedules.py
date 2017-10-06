@@ -35,6 +35,25 @@ class ValueScheduler(object):
             self.variable.set_value(self.schedule[epoch])
 
 
+class Linear(object):
+
+    def __init__(self, variable, start_epoch, end_epoch, target_value):
+        self.variable = variable
+        self.start_epoch = start_epoch
+        self.end_epoch = end_epoch
+        self.target_value = target_value
+        self.shift = None
+
+    def __call__(self, epoch, observed):
+        if self.start_epoch <= epoch < self.end_epoch:
+            if self.shift is None:
+                start_value = self.variable.get_value()
+                self.shift = ((self.target_value - start_value) /
+                              (self.end_epoch - self.start_epoch))
+            self.variable.set_value(self.variable.get_value() + self.shift)
+
+
+
 class PatienceMult(object):
 
     def __init__(self, variable, factor, observe, patience,

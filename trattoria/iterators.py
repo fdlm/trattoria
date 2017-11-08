@@ -52,7 +52,7 @@ def iterate_batches(data, batch_size, shuffle=False, fill_last=True,
         n_iter += 1
 
 
-def _chunks_to_arrays(data_chunks, target_chunks, max_len, return_mask):
+def _chunks_to_arrays(chunks, max_len, return_mask):
     """
     Concatenates chunks of data and targets into a single array.
 
@@ -76,6 +76,7 @@ def _chunks_to_arrays(data_chunks, target_chunks, max_len, return_mask):
 
     """
     # create the arrays to store data, targets, and mask
+    data_chunks, target_chunks = zip(*chunks)
     feature_shape = data_chunks[0].shape[1:]
     target_shape = target_chunks[0].shape[1:]
     data = np.zeros(
@@ -108,38 +109,32 @@ def _chunks_to_arrays(data_chunks, target_chunks, max_len, return_mask):
         return data, targets
 
 
-def _chunks_to_arrays_cls(data_chunks, target_chunks, max_len, return_mask):
+def _chunks_to_arrays_cls(chunks, max_len, return_mask):
     # create the arrays to store data, targets, and mask
-    max_len = max(dc.shape[1] for dc in data_chunks)
-    feature_shape = data_chunks[0].shape[2:]
-    target_shape = target_chunks[0].shape[1:]
-    data = np.zeros(
-        (len(data_chunks), max_len) + feature_shape,
-        dtype=data_chunks[0].dtype)
-    targets = np.zeros(
-        (len(target_chunks),) + target_shape,
-        dtype=target_chunks[0].dtype)
-    mask = np.zeros(
-        (len(data_chunks), max_len),
-        dtype=np.float32
-    )
+    # TODO: this only supports one "sequence" source in the chunks, and it
+    #       has to be at index 0.
+    data = zip(*chunks)
+    max_len = max(dc.shape[1] for dc in data[0])
 
-    for i in range(len(data_chunks)):
-        dlen = data_chunks[i].shape[1]
-        data[i, :dlen] = data_chunks[i][0]
-        targets[i] = target_chunks[i][0]
+    seq = np.zeros((len(chunks), max_len) + data[0][0].shape[2:],
+                   dtype=data[0][0].dtype)
+    other = [np.zeros((len(chunks),) + d[0].shape[1:], dtype=d[0].dtype)
+             for d in data[1:]]
+    mask = np.zeros((len(chunks), max_len), dtype=np.float32)
+
+    for i in range(len(chunks)):
+        dlen = data[0][i].shape[1]
+        seq[i, :dlen] = data[0][i][0]
+        seq[i, dlen:] = data[0][i][:, dlen - 1]
         mask[i, :dlen] = 1.
-        # Repeat last valid value of data and targets throughout the whole
-        # masked area. This is consistent with the semantics of Lasagne's RNN
-        # implementation, which repeats the previous output value at every
-        # masked element. Also, Spaghetti (CRF Library) requires it to be this
-        # way.
-        data[i, dlen:] = data[i, dlen - 1]
+
+        for j in range(len(other)):
+            other[j][i] = data[j + 1][i][0]
 
     if return_mask:
-        return data, mask, targets
+        return (seq,) + tuple(other[:-1]) + (mask,) + (other[-1],)
     else:
-        return data, targets
+        return (seq,) + tuple(other)
 
 
 def iterate_sequences(datasources, batch_size, shuffle=False,
@@ -183,44 +178,36 @@ def iterate_sequences(datasources, batch_size, shuffle=False,
     if shuffle:
         random.shuffle(ds_idxs)
 
-    data_chunks = []
-    target_chunks = []
-
+    chunks = []
     max_len = max_seq_len or 0
     for ds_idx in ds_idxs:
         ds = datasources[ds_idx]
         # we chunk the data according to sequence_length
-        for d, t in iterate_batches(ds, max_seq_len or len(ds),
-                                    shuffle=False, fill_last=False):
-            data_chunks.append(d)
-            target_chunks.append(t)
-            max_len = max(max_len, len(d))
-
-            if len(data_chunks) == batch_size:
-                yield compile_chunk_fn(data_chunks, target_chunks, max_len,
-                                       mask)
-                data_chunks = []
-                target_chunks = []
+        for batch in iterate_batches(ds, max_seq_len or len(ds),
+                                     shuffle=False, fill_last=False):
+            chunks.append(batch)
+            max_len = max(max_len, len(batch[0]))
+            if len(chunks) == batch_size:
+                yield compile_chunk_fn(chunks, max_len, mask)
+                chunks = []
                 max_len = max_seq_len or 0
 
     # after we processed all data sources, there might be some chunks left.
-    while fill_last and len(data_chunks) < batch_size:
+    while fill_last and len(chunks) < batch_size:
         # add more sequences until we fill it up
         # get a random data source
         ds_idx = random.sample(ds_idxs, 1)[0]
         ds = datasources[ds_idx]
-        for d, t in iterate_batches(ds, max_seq_len or len(ds),
-                                    shuffle=False, fill_last=False):
-            data_chunks.append(d)
-            target_chunks.append(t)
-            max_len = max(max_len, len(d))
-
-            if len(data_chunks) == batch_size:
+        for batch in iterate_batches(ds, max_seq_len or len(ds),
+                                     shuffle=False, fill_last=False):
+            chunks.append(batch)
+            max_len = max(max_len, len(batch[0]))
+            if len(chunks) == batch_size:
                 # we filled it!
                 break
 
-    if len(data_chunks) > 0:
-        yield compile_chunk_fn(data_chunks, target_chunks, max_len, mask)
+    if len(chunks) > 0:
+        yield compile_chunk_fn(chunks, max_len, mask)
 
 
 class BatchIterator:
@@ -318,8 +305,10 @@ class SequenceIterator:
                                  self.mask)
 
     def __len__(self):
-        return sum(len(ds) // self.max_seq_len + 1
-                   for ds in self.datasources) // self.batch_size + 1
+        if self.max_seq_len is None:
+            return len(self.datasources) // self.batch_size + 1
+        else:
+            return sum(len(ds) // self.max_seq_len + 1 for ds in self.datasources) // self.batch_size + 1
 
 
 class SequenceClassificationIterator:
@@ -340,7 +329,6 @@ class SequenceClassificationIterator:
 
     def __len__(self):
         return len(self.datasources) // self.batch_size + 1
-
 
 
 class SubsetIterator:

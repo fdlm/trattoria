@@ -53,7 +53,6 @@ class Linear(object):
             self.variable.set_value(self.variable.get_value() + self.shift)
 
 
-
 class PatienceMult(object):
 
     def __init__(self, variable, factor, observe, patience,

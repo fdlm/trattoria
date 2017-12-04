@@ -1,5 +1,6 @@
 import os
 import yaml
+import numpy as np
 from tqdm import tqdm
 
 try:
@@ -90,6 +91,31 @@ class YamlLog(object):
             self.log[name].append(value)
         with open(self.filename, 'w') as f:
             yaml.dump(self.log, f)
+
+
+class VisdomLog(object):
+
+    def __init__(self):
+        from visdom import Visdom
+        self.vis = Visdom()
+        self.legend = None
+        self.win = None
+        self.update = 'replace'
+
+    def start(self, train_observables, val_observables=None):
+        self.legend = train_observables.keys() + val_observables.keys()
+        dummy_data = np.atleast_2d([0] * len(self.legend))
+        self.win = self.vis.line(
+            X=dummy_data, Y=dummy_data, opts=dict(legend=self.legend))
+        self.update = 'replace'
+
+    def add(self, epoch, epoch_results):
+        x = np.atleast_2d([epoch] * len(self.legend))
+        y = np.atleast_2d([epoch_results[k] for k in self.legend])
+        self.vis.line(
+            X=x, Y=y, win=self.win, update=self.update
+        )
+        self.update = 'append'
 
 
 class ModelCheckpoint(object):

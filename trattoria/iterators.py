@@ -2,6 +2,7 @@ import random
 import numpy as np
 import functools
 import Queue
+from itertools import izip
 
 
 def iterate_batches(data, batch_size, shuffle=False, fill_last=True,
@@ -313,11 +314,14 @@ class SequenceIterator:
 
 class SequenceClassificationIterator:
 
-    def __init__(self, datasources, batch_size, shuffle=False, fill_last=True):
+    def __init__(self, datasources, batch_size, shuffle=False, fill_last=True,
+                 mask=True):
+
         self.datasources = datasources
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.fill_last = fill_last
+        self.mask = mask
 
     def __iter__(self):
         return iterate_sequences(
@@ -325,6 +329,7 @@ class SequenceClassificationIterator:
             self.batch_size,
             self.shuffle,
             self.fill_last,
+            mask=self.mask,
             compile_chunk_fn=_chunks_to_arrays_cls)
 
     def __len__(self):
@@ -391,16 +396,16 @@ class ThreadedIterator:
 
         if self.pre_cache:
             # already prepare queue with batches
-            self._batch_gen = threaded(self.batch_iterator, self.n_cached)
+            self._batch_gen = threaded_gen(self.batch_iterator, self.n_cached)
 
     def __iter__(self):
         if self.pre_cache:
             cur_batch_gen = self._batch_gen
             # already start preparing queue for next time
-            self._batch_gen = threaded(self.batch_iterator, self.n_cached)
+            self._batch_gen = threaded_gen(self.batch_iterator, self.n_cached)
             return cur_batch_gen
         else:
-            return threaded(self.batch_iterator, self.n_cached)
+            return threaded_gen(self.batch_iterator, self.n_cached)
 
     @property
     def tshape(self):
@@ -414,7 +419,7 @@ class ThreadedIterator:
         return len(self.batch_iterator)
 
 
-def threaded(generator, n_cached=10):
+def threaded_gen(generator, n_cached=10):
     """
     Lets a generator run in a seperate thread and fill a queue of results.
 
@@ -454,3 +459,26 @@ def threaded(generator, n_cached=10):
             item = queue.get()
 
     return consumer()
+
+
+class ConcatIterator:
+
+    def __init__(self, iterators):
+        self.iterators = iterators
+
+    def __iter__(self):
+        def concatenated(batch_iterators):
+            for batch in izip(*batch_iterators):
+                yield tuple([np.vstack([b[i] for b in batch])
+                             for i in range(len(batch[0]))])
+        return concatenated(self.iterators)
+
+    def __len__(self):
+        return min(len(it) for it in self.iterators)
+
+
+# shortcuts
+augment = AugmentedIterator
+concat = ConcatIterator
+subset = SubsetIterator
+threaded = ThreadedIterator

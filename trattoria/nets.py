@@ -171,6 +171,8 @@ class NeuralNetwork(object):
                 repr_str += ' - {}'.format(layer.name)
             if isinstance(layer, lnn.layers.DenseLayer):
                 repr_str += '  W ({}x{})'.format(*layer.W.shape.eval())
+            if isinstance(layer, lnn.layers.Conv2DLayer):
+                repr_str += '  W ({}x{}x{}x{})'.format(*layer.W.shape.eval())
             repr_str += '\n'
 
         # return everything except the last newline
